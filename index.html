@@ -215,6 +215,40 @@
       float: right;
       color: #666;
     }
+
+    .team-summary {
+      background: linear-gradient(135deg, #4a90e2, #357abd);
+      color: white;
+      padding: 12px 20px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .summary-content {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+    }
+
+    .team-summary h2 {
+      margin: 0;
+      font-size: 20px;
+    }
+
+    #team-total-time {
+      font-size: 16px;
+      margin: 0;
+    }
+
+    #team-total-entries {
+      font-size: 14px;
+      opacity: 0.9;
+      margin: 0;
+    }
   </style>
 </head>
 
@@ -227,26 +261,24 @@
     </div>
   </header>
 
-  <div class="member">
-    <div id="wendy-parsed"></div>
+  <div class="team-summary">
+    <div class="summary-content">
+      <h2>Team Summary</h2>
+      <div id="team-total-time"></div>
+      <div id="team-total-entries"></div>
+    </div>
   </div>
-
-  <div class="member">
-    <div id="soul-parsed"></div>
-  </div>
-
-  <div class="member">
-    <div id="frozen-parsed"></div>
-  </div>
+  <div id="members-container"></div>
 
   <script>
     // Global variables
     let currentStartDate;
     let currentEndDate;
     const teamMembers = [
-      { name: 'soul', token: '67a50b800d282255819e8be0' },
       { name: 'wendy', token: '67a50b380d282255819e8adb' },
-      { name: 'frozen', token: '67a50baab14f523e598a70d4' }
+      { name: 'soul', token: '67a50b800d282255819e8be0' },
+      { name: 'frozen', token: '67a50baab14f523e598a70d4' },
+      { name: 'noah', token: '67a6f9e7818f8361f1596137' },
     ];
 
     // Helper function to format time
@@ -280,8 +312,22 @@
       updateReports();
     }
 
+    // Global variables for team summary
+    let teamTotalTime = 0;
+    let teamTotalEntries = 0;
+
+    // Function to update team summary
+    function updateTeamSummary() {
+      document.getElementById('team-total-time').innerText = `Total Time: ${formatTime(teamTotalTime)}`;
+      document.getElementById('team-total-entries').innerText = `Total Entries: ${teamTotalEntries}`;
+    }
+
     // Function to update all reports
     function updateReports() {
+      // Reset team totals
+      teamTotalTime = 0;
+      teamTotalEntries = 0;
+
       // Format dates for API
       const startStr = currentStartDate.toISOString().split('.')[0] + '.000Z';
       const endStr = currentEndDate.toISOString().split('.')[0] + '.999Z';
@@ -292,15 +338,35 @@
         ' - ' +
         currentEndDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-      // Update each member's report
-      teamMembers.forEach(member => {
-        renderTimeReport(member.token, `${member.name}-parsed`, startStr, endStr);
+      // Clear and recreate member divs
+      const membersContainer = document.getElementById('members-container');
+      membersContainer.innerHTML = '';
+
+      // Create and update reports for each team member
+      const promises = teamMembers.map(member => {
+        const memberDiv = document.createElement('div');
+        memberDiv.className = 'member';
+
+        const parsedDiv = document.createElement('div');
+        parsedDiv.id = `${member.name}-parsed`;
+
+        memberDiv.appendChild(parsedDiv);
+        membersContainer.appendChild(memberDiv);
+
+        return renderTimeReport(member.token, parsedDiv.id, startStr, endStr);
+      });
+
+      // Update team summary after all reports are loaded
+      Promise.all(promises).then(() => {
+        updateTeamSummary();
       });
     }
 
     // Function to render time report
     async function renderTimeReport(token, elementId, startStr, endStr) {
       try {
+        let memberTime = 0;
+        let memberEntries = 0;
         const response = await fetch('https://reports.api.clockify.me/shared/' + token + '?page=&pageSize=&dateRangeStart=' + startStr + '&dateRangeEnd=' + endStr + '&sortOrder=&sortColumn=');
         const data = await response.json();
         let html = '<div class="parsed-report">';
@@ -313,6 +379,10 @@
         html += `<h2>${memberName}'s Time Sheet</h2>`;
         if (data.totals && data.totals.length > 0) {
           const tot = data.totals[0];
+          memberTime = tot.totalTime;
+          memberEntries = tot.entriesCount;
+          teamTotalTime += tot.totalTime;
+          teamTotalEntries += tot.entriesCount;
           html += `<div class="total-time">${formatTime(tot.totalTime)} (${tot.entriesCount} entries)</div>`;
         } else {
           html += '<div class="total-time">00:00:00 (0 entries)</div>';
