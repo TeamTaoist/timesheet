@@ -295,22 +295,61 @@
       return Math.max(...chartData.map(item => item.totalTime));
     }
 
+    // Helper function to convert local date to API date string (UTC)
+    function getApiDate(localDate, isEndDate = false) {
+      const date = new Date(localDate);
+      // For start date: set to previous day 16:00 UTC (00:00 UTC+8)
+      // For end date: set to same day 15:59:59 UTC (23:59:59 UTC+8)
+      if (isEndDate) {
+        date.setHours(15, 59, 59, 0);
+      } else {
+        date.setDate(date.getDate() - 1);
+        date.setHours(16, 0, 0, 0);
+      }
+      return date.toISOString().split('.')[0] + 'Z';
+    }
+
+    // Helper function to format date in local timezone
+    function formatLocalDate(date, includeYear = false) {
+      const options = {
+        timeZone: 'Asia/Shanghai',
+        month: 'short',
+        day: 'numeric',
+        ...(includeYear && { year: 'numeric' })
+      };
+      return date.toLocaleDateString('en-US', options);
+    }
+
     // Function to change week
     function changeWeek(offset) {
-      const newStart = new Date(currentStartDate);
-      newStart.setDate(newStart.getDate() + (offset * 7));
-      currentStartDate = newStart;
+      try {
+        // Create new dates for the week
+        const newStart = new Date(currentStartDate);
+        newStart.setDate(newStart.getDate() + (offset * 7));
+        newStart.setHours(0, 0, 0, 0); // Ensure start of day
+        currentStartDate = newStart;
 
-      const newEnd = new Date(newStart);
-      newEnd.setDate(newStart.getDate() + 6);
-      currentEndDate = newEnd;
+        const newEnd = new Date(newStart);
+        newEnd.setDate(newStart.getDate() + 6);
+        newEnd.setHours(23, 59, 59, 999); // Ensure end of day
+        currentEndDate = newEnd;
 
-      // Update the next week button (disable if it would go into the future)
-      const today = new Date();
-      document.getElementById('next-week').disabled = newEnd > today;
+        console.log('Week changed:', {
+          offset,
+          newStart: newStart.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }),
+          newEnd: newEnd.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' })
+        });
 
-      // Update reports
-      updateReports();
+        // Update the next week button (disable if it would go into the future)
+        const today = new Date();
+        document.getElementById('next-week').disabled = newEnd > today;
+
+        // Update reports
+        updateReports();
+      } catch (error) {
+        console.error('Error changing week:', error);
+        alert('Error changing week. Please try again.');
+      }
     }
 
     // Global variables for team summary
@@ -324,43 +363,54 @@
     }
 
     // Function to update all reports
-    function updateReports() {
-      // Reset team totals
-      teamTotalTime = 0;
-      teamTotalEntries = 0;
+    async function updateReports() {
+      try {
+        // Reset team totals
+        teamTotalTime = 0;
+        teamTotalEntries = 0;
 
-      // Format dates for API
-      const startStr = currentStartDate.toISOString().split('.')[0] + '.000Z';
-      const endStr = currentEndDate.toISOString().split('.')[0] + '.999Z';
+        // Format dates for API with UTC conversion
+        const startStr = getApiDate(currentStartDate, false);
+        const endStr = getApiDate(currentEndDate, true);
 
-      // Update reporting date text
-      document.getElementById('reporting-date').innerText =
-        currentStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
-        ' - ' +
-        currentEndDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        // Update reporting date text with local timezone
+        document.getElementById('reporting-date').innerText =
+          formatLocalDate(currentStartDate) +
+          ' - ' +
+          formatLocalDate(currentEndDate, true);
 
-      // Clear and recreate member divs
-      const membersContainer = document.getElementById('members-container');
-      membersContainer.innerHTML = '';
+        // Clear and recreate member divs
+        const membersContainer = document.getElementById('members-container');
+        membersContainer.innerHTML = '';
 
-      // Create and update reports for each team member
-      const promises = teamMembers.map(member => {
-        const memberDiv = document.createElement('div');
-        memberDiv.className = 'member';
+        console.log('Updating reports:', {
+          localStart: currentStartDate.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }),
+          localEnd: currentEndDate.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }),
+          apiStart: startStr,
+          apiEnd: endStr
+        });
 
-        const parsedDiv = document.createElement('div');
-        parsedDiv.id = `${member.name}-parsed`;
+        // Create and update reports for each team member
+        const promises = teamMembers.map(member => {
+          const memberDiv = document.createElement('div');
+          memberDiv.className = 'member';
 
-        memberDiv.appendChild(parsedDiv);
-        membersContainer.appendChild(memberDiv);
+          const parsedDiv = document.createElement('div');
+          parsedDiv.id = `${member.name}-parsed`;
 
-        return renderTimeReport(member.token, parsedDiv.id, startStr, endStr);
-      });
+          memberDiv.appendChild(parsedDiv);
+          membersContainer.appendChild(memberDiv);
 
-      // Update team summary after all reports are loaded
-      Promise.all(promises).then(() => {
+          return renderTimeReport(member.token, parsedDiv.id, startStr, endStr);
+        });
+
+        // Update team summary after all reports are loaded
+        await Promise.all(promises);
         updateTeamSummary();
-      });
+      } catch (error) {
+        console.error('Error updating reports:', error);
+        alert('Error updating reports. Please try again.');
+      }
     }
 
     // Function to render time report
@@ -368,8 +418,24 @@
       try {
         let memberTime = 0;
         let memberEntries = 0;
-        const response = await fetch('https://reports.api.clockify.me/shared/' + token + '?page=&pageSize=&dateRangeStart=' + startStr + '&dateRangeEnd=' + endStr + '&sortOrder=&sortColumn=');
+
+        // Fetch data with error handling
+        const response = await fetch('https://reports.api.clockify.me/shared/' + token + 
+          '?page=&pageSize=&dateRangeStart=' + startStr + 
+          '&dateRangeEnd=' + endStr + 
+          '&sortOrder=&sortColumn=');
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
         const data = await response.json();
+        console.log('API response for', elementId, ':', {
+          startStr,
+          endStr,
+          totals: data.totals,
+          chartLength: data.chart?.length
+        });
         let html = '<div class="parsed-report">';
 
         // Report Header with Title, Total Time, and Link
@@ -396,17 +462,46 @@
           const maxTime = getMaxTime(data.chart);
           html += '<div class="daily-chart">';
 
-          // Create a map of existing data
-          const timeMap = new Map(data.chart.map(item => [item._id, item.totalTime]));
+          console.log('Chart data from API:', data.chart);
+          
+          // Create a map of existing data (API dates are in UTC)
+          const timeMap = new Map(data.chart.map(item => {
+            console.log('API date entry:', {
+              date: item._id,
+              time: item.totalTime
+            });
+            return [item._id, item.totalTime];
+          }));
 
-          // Generate all dates in the range
+          // Generate all dates in the range using local time (UTC+8)
           const start = new Date(currentStartDate);
           const end = new Date(currentEndDate);
           const dates = [];
+          
           for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-            const dateStr = d.toISOString().split('T')[0];
+            // For local date 00:00 UTC+8, we need previous day 16:00 UTC
+            // Example: Local Feb 11 00:00 (UTC+8) -> API Feb 10 16:00 UTC
+            const apiDate = new Date(d);
+            apiDate.setHours(16, 0, 0, 0);
+            const dateStr = apiDate.toISOString().split('T')[0];
+            
+            // Format display date in local time
+            const displayDate = d.toLocaleDateString('en-US', {
+              timeZone: 'Asia/Shanghai',
+              weekday: 'short',
+              day: 'numeric'
+            });
+            
+            console.log('Date mapping:', {
+              localDate: d.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }),
+              apiDate: dateStr,
+              displayDate,
+              totalTime: timeMap.get(dateStr) || 0
+            });
+            
             dates.push({
               _id: dateStr,
+              displayDate,
               totalTime: timeMap.get(dateStr) || 0
             });
           }
@@ -414,12 +509,11 @@
           // Render all dates
           dates.forEach(item => {
             const height = item.totalTime ? Math.max((item.totalTime / maxTime) * 200, 20) : 20; // minimum height of 20px
-            const date = new Date(item._id).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' });
             html += `
               <div class="chart-bar">
                 <div class="time-label">${formatTime(item.totalTime)}</div>
                 <div class="bar" style="height: ${height}px; ${item.totalTime === 0 ? 'background: #e0e0e0;' : ''}"></div>
-                <div class="bar-label">${date}</div>
+                <div class="bar-label">${item.displayDate}</div>
               </div>`;
           });
           html += '</div>';
@@ -444,30 +538,46 @@
 
     // Initialize on page load
     window.addEventListener('DOMContentLoaded', function () {
-      // Get current date
-      const now = new Date();
+      try {
+        // Get current date in local timezone
+        const now = new Date();
+        console.log('Initializing with current time (UTC+8):', 
+          now.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
 
-      // Calculate start of reporting week (Wednesday)
-      const dayOfWeek = now.getDay(); // 0 is Sunday, 3 is Wednesday
-      const delta = dayOfWeek >= 3 ? dayOfWeek - 3 : dayOfWeek + 7 - 3;
-      const startDate = new Date(now);
-      startDate.setDate(now.getDate() - delta);
-      startDate.setHours(0, 0, 0, 0);
+        // Calculate start of reporting week (Wednesday)
+        const dayOfWeek = now.getDay(); // 0 is Sunday, 3 is Wednesday
+        const delta = dayOfWeek >= 3 ? dayOfWeek - 3 : dayOfWeek + 7 - 3;
+        
+        // Create start date at 00:00 local time
+        const startDate = new Date(now);
+        startDate.setDate(now.getDate() - delta);
+        startDate.setHours(0, 0, 0, 0);
 
-      // End date is start plus 6 days (Tuesday)
-      const endDate = new Date(startDate);
-      endDate.setDate(startDate.getDate() + 6);
-      endDate.setHours(23, 59, 59, 999);
+        // Create end date at 23:59:59.999 local time
+        const endDate = new Date(startDate);
+        endDate.setDate(startDate.getDate() + 6);
+        endDate.setHours(23, 59, 59, 999);
 
-      // Set global dates
-      currentStartDate = startDate;
-      currentEndDate = endDate;
+        console.log('Initial date range (UTC+8):', {
+          startLocal: startDate.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }),
+          endLocal: endDate.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }),
+          apiStart: getApiDate(startDate),
+          apiEnd: getApiDate(new Date(endDate.getTime() + 999))
+        });
 
-      // Disable next week button initially
-      document.getElementById('next-week').disabled = true;
+        // Set global dates
+        currentStartDate = startDate;
+        currentEndDate = endDate;
 
-      // Initial report update
-      updateReports();
+        // Disable next week button initially
+        document.getElementById('next-week').disabled = true;
+
+        // Initial report update
+        updateReports();
+      } catch (error) {
+        console.error('Error initializing:', error);
+        alert('Error initializing the application. Please refresh the page.');
+      }
     });
   </script>
 
