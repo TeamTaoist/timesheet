@@ -298,15 +298,16 @@
     // Helper function to convert local date to API date string (UTC)
     function getApiDate(localDate, isEndDate = false) {
       const date = new Date(localDate);
-      // For start date: set to previous day 16:00 UTC (00:00 UTC+8)
-      // For end date: set to same day 15:59:59 UTC (23:59:59 UTC+8)
+      // For start date: set to current day 08:00 UTC (00:00 UTC+8)
+      // For end date: set to next day 07:59:59 UTC (23:59:59 UTC+8)
       if (isEndDate) {
-        date.setHours(15, 59, 59, 0);
+        date.setDate(date.getDate() + 1);
+        date.setHours(7, 59, 59, 0);
       } else {
-        date.setDate(date.getDate() - 1);
-        date.setHours(16, 0, 0, 0);
+        date.setHours(8, 0, 0, 0);
       }
-      return date.toISOString().split('.')[0] + 'Z';
+
+      return date.toISOString();
     }
 
     // Helper function to format date in local timezone
@@ -317,7 +318,7 @@
         day: 'numeric',
         ...(includeYear && { year: 'numeric' })
       };
-      return date.toLocaleDateString('en-US', options);
+      return date.toLocaleDateString('zh-CN', options);
     }
 
     // Function to change week
@@ -336,8 +337,8 @@
 
         console.log('Week changed:', {
           offset,
-          newStart: newStart.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }),
-          newEnd: newEnd.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' })
+          newStart: newStart.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }),
+          newEnd: newEnd.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
         });
 
         // Update the next week button (disable if it would go into the future)
@@ -384,8 +385,8 @@
         membersContainer.innerHTML = '';
 
         console.log('Updating reports:', {
-          localStart: currentStartDate.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }),
-          localEnd: currentEndDate.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }),
+          localStart: currentStartDate.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }),
+          localEnd: currentEndDate.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }),
           apiStart: startStr,
           apiEnd: endStr
         });
@@ -482,18 +483,18 @@
             // For local date 00:00 UTC+8, we need previous day 16:00 UTC
             // Example: Local Feb 11 00:00 (UTC+8) -> API Feb 10 16:00 UTC
             const apiDate = new Date(d);
-            apiDate.setHours(16, 0, 0, 0);
+            apiDate.setHours(8, 0, 0, 0);
             const dateStr = apiDate.toISOString().split('T')[0];
             
             // Format display date in local time
-            const displayDate = d.toLocaleDateString('en-US', {
+            const displayDate = d.toLocaleDateString('zh-CN', {
               timeZone: 'Asia/Shanghai',
               weekday: 'short',
               day: 'numeric'
             });
             
             console.log('Date mapping:', {
-              localDate: d.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }),
+              localDate: d.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }),
               apiDate: dateStr,
               displayDate,
               totalTime: timeMap.get(dateStr) || 0
@@ -542,7 +543,7 @@
         // Get current date in local timezone
         const now = new Date();
         console.log('Initializing with current time (UTC+8):', 
-          now.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
+          now.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }));
 
         // Calculate start of reporting week (Wednesday)
         const dayOfWeek = now.getDay(); // 0 is Sunday, 3 is Wednesday
@@ -559,8 +560,8 @@
         endDate.setHours(23, 59, 59, 999);
 
         console.log('Initial date range (UTC+8):', {
-          startLocal: startDate.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }),
-          endLocal: endDate.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }),
+          startLocal: startDate.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }),
+          endLocal: endDate.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }),
           apiStart: getApiDate(startDate),
           apiEnd: getApiDate(new Date(endDate.getTime() + 999))
         });
